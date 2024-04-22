@@ -1,0 +1,59 @@
+name: Publish PowerShell Module
+
+on:
+  workflow_run:
+    workflows: ["Build PS Module"]
+    branches:
+      - main
+    types:
+      - completed
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: 'Download artifact'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: context.payload.workflow_run.id,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "StaleBranchRemover-release"
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`./RemoveStaleBranch.zip`, Buffer.from(download.data));
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '8.0.x'  # Changed to use .NET Core 8.0.x
+
+      - name: Install PowerShellGet module
+        run: |
+          Install-Module -Name PowerShellGet -Force -Scope CurrentUser
+
+      - name: Install NuGet provider
+        run: |
+          Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
+
+      - name: Publish module to PowerShell Gallery
+        run: |
+          # Replace 'ModuleName' with the name of your module
+          # Use the GitHub secret for the PowerShell Gallery API key
+          $apiKey = $env:POWERSHELL_GALLERY_API_KEY
+          Publish-Module -Name StaleBranchRemover -Path ./RemoveStaleBranch.zip -NuGetApiKey $apiKey -Force -Verbose

@@ -1,0 +1,40 @@
+name: Build PS Module
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'  # You can adjust this to match your module's requirements
+
+      - name: Increment version number and commit changes
+        run: |
+          $psd1Path = "./stale-branch-remover/StaleBranchRemover/StaleBranchRemover.psd1"
+          $psd1Content = Get-Content -Path $psd1Path
+          $versionRegex = '(?<=Version = ")[\d\.]+(?=")'
+          $currentVersion = $psd1Content | Select-String -Pattern $versionRegex -AllMatches | ForEach-Object { $_.Matches.Value }
+          $newVersion = [version]$currentVersion
+          $newVersion = $newVersion.Major, $newVersion.Minor, ($newVersion.Build + 1), $newVersion.Revision -join '.'
+          $psd1Content -replace $versionRegex, $newVersion | Set-Content -Path $psd1Path
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add .
+          git commit -m "Increment version number to $newVersion"
+          git push
+
+      - name: Create release artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: StaleBranchRemover-release  # Name of the artifact
+          path: ./StaleBranchRemover  # Path to the built module
